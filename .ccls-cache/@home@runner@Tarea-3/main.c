@@ -162,6 +162,45 @@ void dfs(State *state) {
     printf("No se encontró solución.\n");
     stack_clean(pila);
 }
+
+void bfs(State *initial_state) {
+    List *queue = list_create();
+    list_pushBack(queue, initial_state);
+
+    int iteracion = 1; // Variable para contar las iteraciones
+
+    while (list_size(queue) > 0) {
+        State *currentState = (State *)list_popFront(queue);
+
+        printf("Iteración BFS: %d\n", iteracion);
+        printf("Estado actual:\n");
+        imprimirEstado(currentState);
+
+        if (finalState(currentState)) {
+            printf("Se encontró el estado final:\n");
+            imprimirEstado(currentState);
+            list_clean(queue);
+            return;
+        }
+
+        List* adj_states = adjStates(currentState);
+        State* adj_state = list_first(adj_states);
+        while (adj_state != NULL) {
+            list_pushBack(queue, adj_state);
+            adj_state = list_next(adj_states);
+        }
+
+        list_clean(adj_states);
+
+        printf("Número de estados en la cola: %d\n", list_size(queue));
+
+        iteracion++;
+    }
+
+    printf("No se encontró solución.\n");
+    list_clean(queue);
+}
+
 int main() {
     // Estado inicial del puzzle
     State estado_inicial = {
@@ -169,7 +208,7 @@ int main() {
          {1, 3, 4}, // Segunda fila
          {6, 5, 7}, // Tercera fila
          },  
-        0, 1   // Posición del espacio vacío (fila 0, columna 1)
+        0, 0   // Posición del espacio vacío (fila 0, columna 1)
     };
     estado_inicial.actions = list_create();
 
