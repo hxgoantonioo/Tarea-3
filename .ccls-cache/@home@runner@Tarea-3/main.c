@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include "tdas/list.h"
 #include "tdas/heap.h"
 #include "tdas/extra.h"
 #include "tdas/stack.h"
 #include <string.h>
+
 
 // Definición de la estructura para el estado del puzzle
 typedef struct {
@@ -12,6 +14,7 @@ typedef struct {
     int x;    // Posición x del espacio vacío
     int y;    // Posición y del espacio vacío
     List* actions; //Secuencia de movimientos para llegar al estado
+    int steps;
 } State;
 
 int distancia_L1(State* state) {
@@ -88,10 +91,9 @@ List* adjStates(State *state) {
 
 // Fun
 
-
-/* Función para imprimir los estados adyacentes
+/*Función para imprimir los estados adyacentes
 void impAdj(State* state) {
-    List* adj = adjEstates(state);
+    List* adj = adjStates(state);
     int index = 1;
     State* adj_state = list_first(adj);
     while (adj_state != NULL) {
@@ -111,8 +113,63 @@ void impAdj(State* state) {
         adj_state = next;
     }
     list_clean(adj);
+}*/
+
+
+//Funcion para convertir el estado a una cadena unica
+void stateToString(State* state, char* str)
+{
+    int index = 0;
+    for (int i = 0; i < 3; i++)
+        {
+            for (int j = 0; j < 3; j++)
+                {
+                    index += sprintf(&str[index], "%d", state->square[i][j]);
+                }
+        }
+    str[index] = '\0';
 }
-*/
+
+//Funcion para vetrificar si un estado ya fue visitado
+bool isVisited(const List *visited, const State *state)
+{
+    State *visitedState = list_first(visited);
+    while (visitedState != NULL)
+        {
+            bool igual = true;
+            for (int i = 0; i < 3; i++)
+                {
+                    for (int j = 0; j < 3; j++)
+                        {
+                            if (visitedState->square[i][j] != state->square[i][j])
+                            {
+                                igual = false;
+                                break;
+                            }
+                        }
+                    if (!igual)
+                    {
+                        break;
+                    }
+                }
+            if (igual)
+            {
+                return true;
+            }
+            visitedState = list_next(visited);
+        }
+    return false;
+}
+
+//Funcion para agregar un estado a la lista de visitados
+void addVisited(List *visited, State *state)
+{
+    State *newState = (State *)malloc(sizeof(State));
+    copyState(state->square, newState->square);
+    newState->x = state->x;
+    newState->y = state->y;
+    list_pushBack(visited, newState);
+}
 
 //Funcion que verificara si se encuentra en estado final
 int finalState(State *state){
@@ -124,48 +181,60 @@ int finalState(State *state){
   }
   return 1;
 }
-
-// Función de búsqueda en profundidad (DFS)
 void dfs(State *state) {
     Stack *pila = stack_create();
-    stack_push(pila, state);
+    List *visitedStates = list_create();
 
-    while (stack_top(pila) != NULL) {
+    stack_push(pila, state);
+    addVisited(visitedStates, state);
+
+    int iteraciones = 1;
+
+    while (!stack_is_empty(pila)) {
         State *currentState = stack_top(pila);
         stack_pop(pila);
+
+        printf("Iteracion DFS: %d\n", iteraciones);
+        printf("Estado actual:\n");
+        imprimirEstado(currentState);
 
         if (finalState(currentState)) {
             printf("Se encontró el estado final:\n");
             imprimirEstado(currentState);
             stack_clean(pila);
+            list_clean(visitedStates);
             return;
         }
-
         List* adj_states = adjStates(currentState);
         State* adj_state = list_first(adj_states);
         while (adj_state != NULL) {
-            stack_push(pila, adj_state);
+            if(!isVisited(visitedStates, adj_state)) {
+                stack_push(pila, adj_state);
+                addVisited(visitedStates, adj_state);
+            }
             adj_state = list_next(adj_states);
         }
-
-        // Liberar memoria de los estados adyacentes
-        adj_state = list_first(adj_states);
-        while (adj_state != NULL) {
-            State* next = list_next(adj_states);
-            list_clean(adj_state->actions);
-            free(adj_state);
-            adj_state = next;
-        }
         list_clean(adj_states);
-    }
+        printf("Numero de estados en la pila: %d\n", list_size(pila));
+        iteraciones++;
 
+        // Opcional: Agregar un límite de profundidad
+        if(iteraciones >= 3000) {
+            printf("Se alcanzó el límite de profundidad.\n");
+            break;
+        }
+    }
     printf("No se encontró solución.\n");
     stack_clean(pila);
 }
 
+
 void bfs(State *initial_state) {
     List *queue = list_create();
+    List *visited = list_create();
+    
     list_pushBack(queue, initial_state);
+    addVisited(visited, initial_state);
 
     int iteracion = 1; // Variable para contar las iteraciones
 
@@ -180,13 +249,23 @@ void bfs(State *initial_state) {
             printf("Se encontró el estado final:\n");
             imprimirEstado(currentState);
             list_clean(queue);
+            list_clean(visited);
             return;
         }
 
         List* adj_states = adjStates(currentState);
         State* adj_state = list_first(adj_states);
         while (adj_state != NULL) {
-            list_pushBack(queue, adj_state);
+            if (!isVisited(visited, adj_state))
+            {
+                list_pushBack(queue, adj_state);
+                addVisited(visited, adj_state);
+            }
+            else
+            {
+                list_clean(adj_state->actions);
+                free(adj_state);
+            }
             adj_state = list_next(adj_states);
         }
 
@@ -199,6 +278,64 @@ void bfs(State *initial_state) {
 
     printf("No se encontró solución.\n");
     list_clean(queue);
+    list_clean(visited);
+}
+
+int state_priority(const State* state) {
+    return state->steps + distancia_L1(state);
+}
+
+void bestFirst(State *state) {
+    Heap* heap = heap_create();
+    List* visitedStates = list_create();
+
+    state->steps = 0;
+    heap_push(heap, state, state_priority(state));
+    addVisited(visitedStates, state);
+
+    int iteraciones = 1; // Contador de iteraciones para el límite de profundidad
+    const int MAX_DEPTH = 100; // Definir el límite de profundidad máximo
+
+    while (heap_top(heap) != NULL) {
+        State* currentState = (State*)heap_top(heap);
+        heap_pop(heap);
+
+        printf("Estado actual en best_first:\n");
+        imprimirEstado(currentState);
+
+        if (finalState(currentState)) {
+            printf("Estado final: \n");
+            imprimirEstado(currentState);
+            list_clean(visitedStates);
+            return;
+        }
+
+        List* adj_states = adjStates(currentState);
+        State* adj_state = list_first(adj_states);
+
+        while (adj_state != NULL) {
+            adj_state->steps = currentState->steps + 1;
+            if (!isVisited(visitedStates, adj_state)) {
+                heap_push(heap, adj_state, state_priority(adj_state));
+                addVisited(visitedStates, adj_state);
+            } 
+            else {
+                list_clean(adj_state->actions);
+                free(adj_state);
+            }
+            adj_state = list_next(adj_states);
+        }
+        list_clean(adj_states);
+
+        // Verificar el límite de profundidad
+        if (iteraciones >= MAX_DEPTH) {
+            printf("Límite de profundidad alcanzado.\n");
+            break;
+        }
+        iteraciones++;
+    }
+    printf("No se encontró solución.\n");
+    list_clean(visitedStates);
 }
 
 int main() {
@@ -258,10 +395,11 @@ int main() {
           dfs(&estado_inicial);
           break;
         case '2':
-          //bfs(estado_inicial);
+          bfs(&estado_inicial);
           break;
         case '3':
-          //best_first(estado_inicial);
+          //impAdj(&estado_inicial);
+          bestFirst(&estado_inicial);
           break;
         }
         presioneTeclaParaContinuar();
